@@ -6,6 +6,7 @@ from time import sleep
 from sys import stderr
 from shutil import copytree, ignore_patterns
 from json import loads, dumps, JSONDecodeError
+from pprint import pprint
 '''
 This module updates your multimc modpack.
 
@@ -14,6 +15,7 @@ It checks the difference between the old zip file and the new zip file, and chan
 Line-level diffing is supported.
 '''
 class List(list):
+    "This class extends the built-in list class to support hashing by locking itself when hashed."
     __slots__=('____hash',)
     def __init__(self,iterable=()):
         self.____hash = None
@@ -64,6 +66,7 @@ hash_test = List()
 hash_test._List____hash = 54
 hash(hash_test)
 def name_from_instance(instance_folder):
+    "This function extracts the name of the MultiMC instance from the instance config file."
     name = None
     with open(instance_folder / 'instance.cfg','r') as config_file:
         for line in config_file:
@@ -72,10 +75,12 @@ def name_from_instance(instance_folder):
                 return name
 
 def check_zipfile(zip_file):
+    "This function checks if a path is to a zip file."
     if not zip_file.exists() and is_zipfile(zip_file):
         raise FileNotFoundError(str(zip_file))
 
 def get_files(instance_folder, zip_file_folder):
+    "This function gets the zip files for updating, and the instance folder path."
     working_dir = Path.cwd()
     instance_folder = Path(working_dir,instance_folder)
     check_zipfile(instance_folder)
@@ -172,9 +177,8 @@ def inspect_files(old_zip, new_zip, in_both):
         #sleep(0.2)
     return (lines_to_delete,lines_to_add)
 
-from pprint import pprint
-
 def compare_zipfile_contents(zip_old, zip_new):
+    "This function returns the differences between two zip files, including changed lines."
     #Don't print this. It's way too long. Prints the entire zip file contents, and all subfolders' contents too.
     #[*map(pprint,map(ZipFile.namelist,(zip_old,zip_new)))]
 
@@ -196,6 +200,7 @@ def compare_zipfile_contents(zip_old, zip_new):
     return contents_to_delete, contents_to_add, lines_to_delete, lines_to_add
 
 def update_from_zip(instance_folder, zip_file_folder):
+    "The main function. Updates the given instance using the zips in the folder. Both are string paths."
     instance_folder, zip_old_path, zip_new_path = get_files(instance_folder, zip_file_folder)
     zip_old,zip_new = map(ZipFile,map(str,(zip_old_path, zip_new_path)))
 
