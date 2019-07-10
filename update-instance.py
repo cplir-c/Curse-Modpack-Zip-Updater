@@ -1,12 +1,14 @@
 from collections import defaultdict as default_dict
 from zipfile import ZipFile,ZipInfo,is_zipfile
-from pathlib import Path
+from pathlib import Path, PurePath
 from difflib import Differ,SequenceMatcher
 from time import sleep
 from sys import stderr
 from shutil import copytree, ignore_patterns
 from json import loads, dumps, JSONDecodeError
 from pprint import pprint
+
+from lockingcollections import LockingList as List
 '''
 This module updates your multimc modpack.
 
@@ -27,58 +29,10 @@ New plan:
     Compare the files from the instance folder and the old zip file's overrides folder.
     Copy files in the instance folder that 
 '''
-class List(list):
-    "This class extends the built-in list class to support hashing by locking itself when hashed."
-    __slots__=('____hash',)
-    def __init__(self,iterable=()):
-        self.____hash = None
-        list.__init__(self,iterable)
-    def __hash__(self):
-        if self.____hash is None:
-            self_hash = id(self) & 0xffffffff
-            for k in self:
-                if k is not self:
-                    self_hash ^= hash(k)
-                else:
-                    self_hash ^= (self_hash>>1)
-            self.____hash = self_hash
-        return self.____hash
-    def __eq__(self, other):
-        if self.____hash is not None:
-            if hasattr(other, '____hash') and other.____hash is not None:
-                if other.____hash != self.____hash:
-                    return False
-            else:
-                if self.____hash != hash(other):
-                    return False
-        return list.__eq__(self, other)
-    def __setitem__(self, key, value):
-        if self.____hash is not None:
-            raise ValueError("You already hashed this List!")
-        if hasattr(value, '__hash__'):
-            list.__setitem__(self, key, value)
-        else:
-            raise ValueError("Value "+str(value)+" is not hashable!")
-    def append(self, item):
-        if self.____hash is not None:
-            raise ValueError("You already hashed this List!")
-        if hasattr(item, '__hash__'):
-            return list.append(self, item)
-        else:
-            raise ValueError("Item "+str(item)+" is not hashable!")
-    def pop(self, index = -1):
-        if self.____hash is not None:
-            raise ValueError("You already hashed this List!")
-        return list.pop(self, index)
-    def extend(self, iterable):
-        if self.____hash is not None:
-            raise ValueError("You already hashed this List!")
-        for value in iterable:
-            self.append(value)
-hash_test = List()
-hash_test._List____hash = 54
-hash(hash_test)
-def name_from_instance(instance_folder:Path):
+
+working_directory = Path.cwd()
+
+def name_from_instance(instance_folder:Path) -> str:
     "This function extracts the name of the MultiMC instance from the instance config file."
     name = None
     with open(str(instance_folder/'instance.cfg'),'r') as config_file:
@@ -87,15 +41,60 @@ def name_from_instance(instance_folder:Path):
                 name = line[5:]
                 return name
 
-def check_zipfile(zip_file):
-    "This function checks if a path is to a zip file."
-    if not zip_file.exists() and is_zipfile(zip_file):
-        print(zip_file,str(zip_file))
-        raise FileNotFoundError(str(zip_file))
+def existant_path(path:Path) -> Path:
+    if not path.exists():
+        raise ValueError("Path "+str(path)+" does not exist.")
+    return path
+
+class Modpack:
+    __slots__ = ('path','pretty_name')
+    def __init__(self, path:Path, pretty_name:str):
+        self.path = existant_path(path.resolve())
+    def list_mods(self):
+        raise NotImplementedError
+    def list_files(self):
+        raise NotImplementedError
+    def open_file(self, relative_path:PurePath):
+        raise NotImplementedError
+    def copy_pack(self):
+        raise NotImplementedError
+    def write_file(self, relative_path:PurePath):
+        raise NotImplementedError
+        
+def file_generator(path:Path,mode:str='r',opener=open):
+    try:
+        opened = opener(path,mode=mode)
+        print('opened '+path)
+        yield opened
+    finally:
+        opened.close()
+        print('closed '+path)
+
+class ZippedPack(Modpack):
+    __slots__ = ()
+    def __init__(self, path):
+        if not isinstance(path,PurePath):
+            path = Path(path)
+        if not path.is_absolute():
+            path = path.absolute()
+        path = path.resolve()
+        existant_path(path)
+        if not is_zipfile(path):
+            raise ValueError("The zipped modpack path "+str(path)+" was not a path to a zip file.")
+        
+        read_zip = next(file_generator(path))
+        
+
+
+
+
+
+
+
+
 
 def get_files(instance_folder, zip_file_folder, zip_new = None):
     "This function gets the zip files for updating, and the instance folder path."
-    working_dir = Path.cwd()
     instance_folder = Path(working_dir,instance_folder).resolve()
     print('instance folder:'+str(instance_folder))
     
@@ -244,7 +243,7 @@ def update_from_zip(instance_folder, zip_file_folder, new_zip = None):
     if lines_to_add:
         del lines_to_add['manifest.json']
     #It's going to be in the new zip file anyway.
-    
+
 update_from_zip(r'..\..\..\mc\mmc-stable-win32\MultiMC\instances\ATM3-_Expert_Shedding_Tiers-1.1.4',
                 r'..\..\..\mc\mmc-stable-win32\MultiMC\instances\expert', 4)
     
