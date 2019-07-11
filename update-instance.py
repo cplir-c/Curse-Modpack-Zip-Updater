@@ -7,6 +7,8 @@ from sys import stderr
 from shutil import copytree, ignore_patterns
 from json import loads, dumps, JSONDecodeError
 from pprint import pprint
+from weakref import finalize
+from functools import lru_cache
 
 from lockingcollections import LockingList as List
 '''
@@ -31,6 +33,10 @@ New plan:
 '''
 
 working_directory = Path.cwd()
+def is_zipfile(fp,is_a_zipfile=is_zipfile):
+    if isinstance(fp,Path):
+        fp=str(fp)
+    return is_a_zipfile(fp)
 
 def name_from_instance(instance_folder:Path) -> str:
     "This function extracts the name of the MultiMC instance from the instance config file."
@@ -45,11 +51,43 @@ def existant_path(path:Path) -> Path:
     if not path.exists():
         raise ValueError("Path "+str(path)+" does not exist.")
     return path
+        
+def file_generator(path:Path,mode:str='r',opener=open):
+    try:
+        opened = opener(str(path),mode=mode)
+        #print('opened',path)
+        finalize(opened,opened.close)
+        #finalize(opened,print,'closed '+str(opened))
+        return opened
+    except:
+        try:
+            opened.close()
+        except NameError:
+            pass
+
+class Mod:
+    __slots__ = ('path','version','modid','pretty_name')
+    def __init__(self, path:str, pretty_name:str, version:str, modid:str):
+        self.path = path
+        self.version = version
+        self.pretty_name = pretty_name
+        self.modid = modid
+
+class CurseMod(Mod):
+    """
+        Retrieve a mod from the curseforge website.
+    """
+    __slots__ = ('project_id','file_id','url_name')
+    def __init__(self, project_id, file_id):
+        pass
+
+#Download a curse mod
 
 class Modpack:
     __slots__ = ('path','pretty_name')
     def __init__(self, path:Path, pretty_name:str):
         self.path = existant_path(path.resolve())
+        self.pretty_name = pretty_name
     def list_mods(self):
         raise NotImplementedError
     def list_files(self):
@@ -60,18 +98,9 @@ class Modpack:
         raise NotImplementedError
     def write_file(self, relative_path:PurePath):
         raise NotImplementedError
-        
-def file_generator(path:Path,mode:str='r',opener=open):
-    try:
-        opened = opener(path,mode=mode)
-        print('opened '+path)
-        yield opened
-    finally:
-        opened.close()
-        print('closed '+path)
 
 class ZippedPack(Modpack):
-    __slots__ = ()
+    __slots__ = ('zipfile',)
     def __init__(self, path):
         if not isinstance(path,PurePath):
             path = Path(path)
@@ -82,30 +111,41 @@ class ZippedPack(Modpack):
         if not is_zipfile(path):
             raise ValueError("The zipped modpack path "+str(path)+" was not a path to a zip file.")
         
-        read_zip = next(file_generator(path))
+        read_zip = file_generator(path,opener=ZipFile)
+        self.zipfile = read_zip
+        
+        name = None
+        with read_zip.open('manifest.json') as manifest:
+            for line in manifest:
+                if line.lstrip().startswith(b'"name":'):
+                    line = line.strip()[:-1]
+                    print(line)
+                    name = str(line[line.rstrip(b'"').rindex(b'"'):line.rindex(b'"')])
+        print('name',name)
+        super().__init__(path,name)
+    def list_mods(self):
         
 
 
 
 
 
-
-
-
+def check_zipfile(path:Path) -> bool:
+    return is_zipfile(existant_path(path))
 
 def get_files(instance_folder, zip_file_folder, zip_new = None):
     "This function gets the zip files for updating, and the instance folder path."
-    instance_folder = Path(working_dir,instance_folder).resolve()
-    print('instance folder:'+str(instance_folder))
+    instance_folder = Path(working_directory,instance_folder).resolve()
+    print('instance folder: '+str(instance_folder))
     
-    zip_file_folder = Path(working_dir,zip_file_folder).resolve()
-    check_zipfile(zip_file_folder)
-    print(':'+str(instance_folder))
+    zip_file_folder = Path(working_directory,zip_file_folder).resolve()
+    print('zip file folder: '+str(instance_folder))
 
     instance_name = name_from_instance(instance_folder)
     print(instance_name,instance_folder)
-    zip_old = Path(zip_file_folder,instance_folder.name+'.zip').resolve()
+    zip_old = zip_file_folder/(instance_folder.name+'.zip')
     print(zip_old)
+    zip_old = zip_old.resolve()
     check_zipfile(zip_old)
     print('old zip:'+str(zip_old))
     
@@ -113,8 +153,9 @@ def get_files(instance_folder, zip_file_folder, zip_new = None):
     def difference_key(other:Path,matcher:SequenceMatcher=matcher):
         matcher.set_seq1(other.name)
         return matcher.ratio()
+    del matcher
     
-    folder_contents = [check_zipfile(file) or file for file in zip_file_folder.iterdir()]
+    folder_contents = [file for file in zip_file_folder.iterdir() if check_zipfile(file)]
     folder_contents.sort(key=difference_key,reverse=False)
     zip_names = [file.name for file in folder_contents]
     
@@ -225,8 +266,10 @@ def compare_zipfile_contents(zip_old, zip_new):
 def update_from_zip(instance_folder, zip_file_folder, new_zip = None):
     "The main function. Updates the given instance using the zips in the folder. Both are string paths."
     instance_folder, zip_old_path, zip_new_path = get_files(instance_folder, zip_file_folder, new_zip)
+    ZippedPack(zip_old_path)
+    raise
     zip_old,zip_new = map(ZipFile,map(str,(zip_old_path, zip_new_path)))
-
+    
     (files_to_delete, files_to_add, lines_to_delete, lines_to_add) = compare_zipfile_contents(zip_old, zip_new)
 
     if not any((files_to_delete, files_to_add, lines_to_delete, lines_to_add)):
