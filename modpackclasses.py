@@ -3,7 +3,8 @@ Created on Jul 10, 2019
 
 @author: cplir-c
 '''
-from utilityfunctions import existent_path, is_zipfile, file_generator
+from utilityfunctions import existent_path, is_zipfile, file_generator, \
+  read_binary_json
 from functools import lru_cache
 from pathlib import Path, PurePath
 from zipfile import ZipFile
@@ -35,11 +36,9 @@ class Modpack:
         raise NotImplementedError
     def list_files(self):
         raise NotImplementedError
-    def open_file(self, relative_path:PurePath):
+    def open_file(self, relative_path:PurePath, mode='r'):
         raise NotImplementedError
     def copy_pack(self):
-        raise NotImplementedError
-    def write_file(self, relative_path:PurePath):
         raise NotImplementedError
 
 class ZippedPack(Modpack):
@@ -68,7 +67,7 @@ class ZippedPack(Modpack):
         super().__init__(path,name)
     
     def list_mods(self):
-        
+        read_binary_json(self.zipfile.open('manifest.json'))
         
         
 class PackInstance(Modpack):

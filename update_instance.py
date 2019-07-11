@@ -6,6 +6,7 @@ from time import sleep
 from pprint import pprint
 
 from lockingcollections import LockingList as List
+from utilityfunctions import working_directory
 '''
 This module updates your multimc modpack.
 
@@ -26,6 +27,7 @@ New plan:
     Compare the files from the instance folder and the old zip file's overrides folder.
     Copy files in the instance folder that 
 '''
+working_directory = Path.cwd()
 
 def get_files(instance_folder, zip_file_folder, zip_new = None):
     "This function gets the zip files for updating, and the instance folder path."
