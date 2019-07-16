@@ -37,6 +37,5 @@ def file_generator(path:Union[str,Path],mode:str='r',opener=open):
 def check_zipfile(path:Path) -> bool:
     return is_zipfile(existent_path(path))
 
-def 
 
 read_binary_json = load

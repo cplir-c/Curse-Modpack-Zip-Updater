@@ -1,11 +1,13 @@
 from collections import defaultdict as default_dict
 from zipfile import ZipFile
-from pathlib import Path, PurePath
+from pathlib import Path
 from difflib import Differ,SequenceMatcher
 from time import sleep
 from pprint import pprint
 
 from lockingcollections import LockingList as List
+from utilityfunctions import check_zipfile
+from modpackclasses import ZippedPack, PackInstance
 '''
 This module updates your multimc modpack.
 
@@ -14,17 +16,7 @@ It checks the difference between the old zip file and the new zip file, and chan
 Line-level diffing is supported.
 
 New plan:
-    Copy the newer zip file, and put overrides in there.
-    Copy the files from the instance to the new zip file if 
-      they aren't the same as the ones in the overrides in the old zip file.
-    Exclude mods in the old zip file's manifest from copying.
-    Optionally copy all mods that aren't in the new zip file's manifest to
-      the new zip file and remove the mods listed in the new zip's manifest
-      that are already downloaded.
-    
-    Copy the newer zip file to a new zip file.
-    Compare the files from the instance folder and the old zip file's overrides folder.
-    Copy files in the instance folder that 
+    make Modpack instances from the two zips and one instance folder, and combine them into a new zip file using a CombiningSet.
 '''
 working_directory = Path.cwd()
 
@@ -32,17 +24,17 @@ def get_files(instance_folder, zip_file_folder, zip_new = None):
     "This function gets the zip files for updating, and the instance folder path."
     instance_folder = Path(working_directory,instance_folder).resolve()
     print('instance folder: '+str(instance_folder))
+    instance_pack = PackInstance(instance_folder)
     
     zip_file_folder = Path(working_directory,zip_file_folder).resolve()
     print('zip file folder: '+str(instance_folder))
 
-    instance_name = name_from_instance(instance_folder)
-    print(instance_name,instance_folder)
     zip_old = zip_file_folder/(instance_folder.name+'.zip')
     print(zip_old)
     zip_old = zip_old.resolve()
     check_zipfile(zip_old)
     print('old zip:'+str(zip_old))
+    old_zip_pack = ZippedPack(zip_old)
     
     matcher = SequenceMatcher(b=zip_old.name)
     def difference_key(other:Path,matcher:SequenceMatcher=matcher):
@@ -73,6 +65,7 @@ def get_files(instance_folder, zip_file_folder, zip_new = None):
     print("You selected",zip_new.name)
     sleep(1)
     check_zipfile(zip_new)
+    new_zip_pack = ZippedPack(zip_new)
 
     return (instance_folder,zip_old,zip_new)
 
@@ -162,7 +155,7 @@ def update_from_zip(instance_folder, zip_file_folder, new_zip = None):
     "The main function. Updates the given instance using the zips in the folder. Both are string paths."
     instance_folder, zip_old_path, zip_new_path = get_files(instance_folder, zip_file_folder, new_zip)
     ZippedPack(zip_old_path)
-    raise
+
     zip_old,zip_new = map(ZipFile,map(str,(zip_old_path, zip_new_path)))
     
     (files_to_delete, files_to_add, lines_to_delete, lines_to_add) = compare_zipfile_contents(zip_old, zip_new)

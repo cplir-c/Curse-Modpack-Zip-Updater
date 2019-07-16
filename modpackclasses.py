@@ -5,11 +5,10 @@ Created on Jul 10, 2019
 '''
 from pathlib import Path, PurePath
 from zipfile import ZipFile
-from typing import Union
 from functools import lru_cache
 
 from utilityfunctions import existent_path, is_zipfile, file_generator, \
-  read_binary_json
+  read_binary_json, check_zipfile
 from lockingcollections import CombiningSet
 
 class Mod:
@@ -50,7 +49,7 @@ class ZippedPack(Modpack):
         if not path.is_absolute():
             path = path.absolute()
         path = path.resolve()
-        existent_path(path)
+        check_zipfile(path)
         if not is_zipfile(path):
             raise ValueError("There was no zipped modpack at "+str(path))
         
@@ -77,7 +76,7 @@ class ZippedPack(Modpack):
     @lru_cache(16)
     def list_override_mods(self):
         paths = self.list_files()
-        files = list(
+        files = list( #Using map and filter because I'm sure it does it one by one instead of saving intermediate results
             filter(
                 lambda x:is_zipfile(x[1]),
                 map(
@@ -86,11 +85,14 @@ class ZippedPack(Modpack):
                 )
             )
         )
-        mods = 
+        mods = [ForgeMod(self,*path) for path in files]
+        return mods
     def list_modlist_mods(self):
-        
+        modlist = self.open_file(PurePath('modlist.html'))
+        lines = [*modlist.readlines()]
+        print(lines)
     def list_manifest_mods(self):
-        
+        pass
 class PackInstance(Modpack):
     @staticmethod
     def name_from_instance(instance_folder:Path) -> str:
@@ -101,19 +103,16 @@ class PackInstance(Modpack):
                 if line.startswith('name='):
                     name = line[5:]
                     return name
-    
-
 
 class ForgeMod(Mod):
     '''
         Retrieve mod details from the (forge) mod jar.
     '''
     __slots__ = ('modid','manifests','mod_jar')
-    def __init__(self, modpack, mod_jar:  = None):
-        if isinstance(relative_path,Path):
-            relative_path = str(relative_path)
-        if mod_jar is None:
-            mod_jar = file_generator(relative_path, 'r', ZipFile)
+    def __init__(self, modpack:Modpack, relative_path, mod_file = None):
+        if mod_file is None:
+            mod_file = modpack.open_file(relative_path)
+        mod_jar = file_generator(mod_file, 'r', ZipFile)
         
         manifest = file_generator('mcmod.info',opener = mod_jar.open)
         manifests = read_binary_json(manifest)
@@ -133,14 +132,13 @@ class ForgeMod(Mod):
         
         self.manifests = manifests
         self.modid = modid
-        self.relative_path = relative_path
         
         super().__init__(self, modpack, name, version)
 
-class CurseMod(Mod):
+class ListMod(Mod):
     """
         inspect modlist.html for names
     """
     __slots__ = ()
-    def __init__(self, modpack:ZippedPack, relative_path):
-        self.modpack.
+    def __init__(self, modpack:Modpack, line):
+        
