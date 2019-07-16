@@ -177,4 +177,4 @@ def update_from_zip(instance_folder, zip_file_folder, new_zip = None):
 
 update_from_zip(r'..\..\..\mc\mmc-stable-win32\MultiMC\instances\ATM3-_Expert_Shedding_Tiers-1.1.4',
                 r'..\..\..\mc\mmc-stable-win32\MultiMC\instances\expert', 4)
-    
+

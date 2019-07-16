@@ -3,8 +3,6 @@ Created on Jul 10, 2019
 
 @author: cplir-c
 
-This module contains locking collections.
-These collections are mutable, but lock when hashed.
 '''
 from collections.abc import Hashable, Set, Sized
 from collections import deque
