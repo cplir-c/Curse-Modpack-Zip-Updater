@@ -8,12 +8,14 @@ These collections are mutable, but lock when hashed.
 '''
 from collections.abc import Hashable, Set, Sized
 from collections import deque
+from typing import Tuple
 
-#Oshit it doesn't work on tuples 
+#uh-oh, it doesn't work on tuples 
 class LockingList(list):
     "This class extends the built-in list class to support hashing by locking itself when hashed."
     __slots__=()
     hashes = {}
+    # hashes is a private dictionary
     def __init__(self,iterable=(),hashes=hashes):
         super().__init__(iterable)
         self_id = id(self)
@@ -62,6 +64,7 @@ class LockingList(list):
         self.check_hashed()
         check_locking = self.check_locking
         for item in iterable:
+            check_locking(item)
             self.append(item)
     for method in (list.clear,list.pop,list.reverse,list.sort,list.remove,list.__delitem__):
         template = '''def %s(self, *arguments):
@@ -70,6 +73,7 @@ class LockingList(list):
         name = method.__name__
         exec(template%(name,name))
     del template,name,method,hashes
+    
 prt = lambda *k,**a: print(*k,**a) or k[0] if len(k) is 1 else k
 hashtest = LockingList()
 hashtest.append(LockingList(((hashtest,))))
@@ -117,7 +121,7 @@ class LinkedChunks:
             self.end = current
             self.size = size
     __iadd__ = extend
-    def len(self) -> int:
+    def __len__(self) -> int:
         return self.size
     def __getchunk(self, index:int):
         current = self.start
@@ -133,6 +137,7 @@ class LinkedChunks:
                 current = current[-1]
         return current
     def __getitem__(self, index:int):
+        '''Slicing is not implemented.'''
         current, remaining = self.__getchunk(index)
         return current[remaining]
     def __delitem__(self, index):
@@ -144,6 +149,7 @@ class LinkedChunks:
             index += self.size
         if index > self.size - len(self.end):
             return self.end.pop(index - self.size + len(self.end))
+        self.size -= 1
         current, remaining = self.__getchunk(index)
         current.pop(remaining)
     def __setitem__(self, index, item):
@@ -209,7 +215,8 @@ class LinkedChunks:
                 self.current = self.current[self.sub_index]
                 self.sub_index = 0
             return self.current[self.sub_index]
-        
+    def __bool__(self):
+        return self.size != 0
     def __iter__(self):
         return type(self).LinkedChunkIterator(self)
     def index(self, item):
@@ -239,6 +246,7 @@ class LinkedChunks:
             current = next
         current.reverse()
         self.start, self.end = self.end, self.start
+        
         self.insert(-1,0)
         del self[-1]
     
@@ -248,16 +256,16 @@ linkedtest.pop()
 del linkedtest
 
 class ShufflingSet:
-    __slots__ = ('list')
+    __slots__ = ('list','chunk_cache')
     def __init__(self,iterable=()):
         self.list = LinkedChunks()
         self.update(iterable)
-    def append(self, item):
+    def add(self, item):
         #Maximum shuffling!
-        return self.list.append(item) if item not in self.list else False
+        return self.list.append(item) if item not in self.list else None
     def update(self, iterable):
-        deque(map(self.append,iterable),maxlen=0)
-    __and__ = __add__ = update
+        deque(map(self.add,iterable),maxlen=0)
+    __or__ = __add__ = update
     def isdisjoint(self, other):
         if isinstance(other, Sized) and len(other)*2 > len(self.list):
             other, self = self, other
@@ -268,8 +276,8 @@ class ShufflingSet:
     def symmetric_difference(self, iterable):
         pass
     def __contains__(self,item):
-        for i in self:
-            if i == item:
+        for i, o in enumerate(self):
+            if o == item:
                 index = i
         if index is -1:
             return False
@@ -277,11 +285,11 @@ class ShufflingSet:
             #self.list[index], self.list[index//2] = self.list[index//2], self.list[index]
             del self.list[index]
             self.list.insert(index >> 2,item)
-        return True
-    def remove(self,item):
+        return item or True
+    def discard(self,item):
         self.list.remove(item)
     def __len__(self):
-        return self.list.size
+        return len(self,list)
     def __iter__(self):
         return iter(self.list)
     def __str__(self):
@@ -289,19 +297,71 @@ class ShufflingSet:
         for item in self.list:
             display += str(item).encode()
             display += b', '
-        del display[-2:]
+        if self.list:
+            del display[-2:]
         display += b'}'
         return display.decode()
     def copy(self):
         return ShufflingSet(self)
 
+def getresult(function, args, exception_class = Exception) -> Tuple[object,Exception]:
+    exception = None
+    result = None
+    try:
+        result = function(*args)
+    except exception_class as e:
+        exception = e.args
+    return result,exception
+
+def checklength(function):
+    result = getresult(function, [[]]*256, TypeError)
+    if result[1] is None:
+        return
+    message = result[1][0]
+    for number_signal in (' takes from ',' takes '):
+        index = message.find(number_signal)
+        if index != -1:
+            index += len(number_signal)
+            first = int(message[index:message.find(' ',index)])
+            if message[-2] == 'm':
+                second = message.find(' to ', index)
+                second += len(' to ')
+                second = int(message[second:message.find(' ',second)])
+                return range(first,second+1)
+            return (first,)
 def test():
     shuffleset = ShufflingSet()
-    normalset = {}
-    for function in "".split():
+    normalset = set()
+    for function in "copy add discard update __contains__".split():
         shuffletest = shuffleset.copy()
         settest = normalset.copy()
+        
         shufflefunc = getattr(shuffletest,function)
         setfunc = getattr(settest, function)
         
-del shuffletest
+        shufflelength = checklength(shufflefunc)
+        setlength = checklength(setfunc)
+        if shufflelength != setlength:
+            raise(AssertionError((function, shufflelength, setlength)))
+        
+        length = shufflelength
+        del shufflelength, setlength
+        
+        for length in length:
+            shuffle_result = getresult(shufflefunc, (9)*length)
+            set_result = getresult(set, (9)*length)
+            if set_result != shuffle_result:
+                raise( AssertionError((shuffle_result, set_result)))
+            
+class CombiningSet(ShufflingSet):
+    def add(self, item):
+        found = item in self
+        if found:
+            found.combine(item)
+        else:
+            self.list.append(item)
+    
+if __name__ == "__main__":
+    #test()
+    pass
+del test

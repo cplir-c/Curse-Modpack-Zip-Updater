@@ -6,7 +6,6 @@ from time import sleep
 from pprint import pprint
 
 from lockingcollections import LockingList as List
-from utilityfunctions import working_directory
 '''
 This module updates your multimc modpack.
 

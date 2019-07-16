@@ -7,7 +7,7 @@ from pathlib import Path
 from weakref import finalize
 from zipfile import is_zipfile
 from json import load
-
+from typing import Union
 
 def is_zipfile(fp,is_a_zipfile=is_zipfile):
     if isinstance(fp,Path):
@@ -19,12 +19,14 @@ def existent_path(path:Path) -> Path:
         raise ValueError("Path "+str(path)+" does not exist.")
     return path
         
-def file_generator(path:Path,mode:str='r',opener=open):
+def file_generator(path:Union[str,Path],mode:str='r',opener=open):
+    if isinstance(path,Path):
+        path = str(path)
     try:
         opened = opener(str(path),mode=mode)
         #print('opened',path)
         finalize(opened,opened.close)
-        #finalize(opened,print,'closed '+str(opened))
+        finalize(opened,print,'closed '+str(opened))
         return opened
     except:
         try:
@@ -34,5 +36,7 @@ def file_generator(path:Path,mode:str='r',opener=open):
 
 def check_zipfile(path:Path) -> bool:
     return is_zipfile(existent_path(path))
+
+def 
 
 read_binary_json = load
