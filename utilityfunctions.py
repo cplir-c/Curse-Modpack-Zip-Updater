@@ -74,3 +74,6 @@ class parse_html(HTMLParser):
     def handle_data(self, data):
         self.data[-1].append(data)
         self.data.append([])
+        
+def prettify_name(name:str) -> str:
+    return name.replace('_',' ') if ' ' not in name else name

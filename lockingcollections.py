@@ -10,7 +10,10 @@ from typing import Tuple
 
 #uh-oh, it doesn't work on tuples 
 class LockingList(list):
-    "This class extends the built-in list class to support hashing by locking itself when hashed."
+    """
+   "This class extends the built-in list class to support hashing by locking itself when hashed."
+   "It doesn't work on tuples. They don't hash their members until the tuple's hash method is called."
+    """
     __slots__=()
     hashes = {}
     # hashes is a private dictionary
@@ -166,20 +169,6 @@ class LinkedChunks:
             if other == item:
                 return True
         return False
-    class ChunkIterator:
-        __slots__ = ('current','end','prev')
-        def __init__(self, linked_chunks):
-            self.current = linked_chunks.start
-            self.end = linked_chunks.end
-            self.prev = None
-        def __next__(self):
-            prev = self.current
-            if self.prev is self.end:
-                raise StopIteration
-            if self.current is not self.end:
-                self.current = self.current[-1]
-            self.prev = self.current
-            return prev
     def __chunk_iter(self):
         current = self.start
         end = self.end
@@ -195,7 +184,7 @@ class LinkedChunks:
                     yield chunk[i]
             else:
                 yield from chunk
-    class LinkedChunkIterator: 
+    class LinkedChunkIterator:
         __slots__ = ('current','sub_index','index','size','end')
         def __init__(self, linked_chunks):
             self.current = linked_chunks.start
@@ -204,10 +193,10 @@ class LinkedChunks:
             self.index = 0
             self.sub_index = 0
         def __next__(self):
-            self.sub_index += 1
-            self.index += 1
             if self.index >= self.size:
                 raise StopIteration()
+            self.sub_index += 1
+            self.index += 1
             if self.sub_index >= len(self.current) - 1 and self.current is not self.end:
                 #print(len(self.current),self.sub_index, self.index, self.size)
                 self.current = self.current[self.sub_index]
@@ -245,8 +234,7 @@ class LinkedChunks:
         current.reverse()
         self.start, self.end = self.end, self.start
         
-        self.insert(-1,0)
-        del self[-1]
+        self.__getchunk(-1)
     
             
 linkedtest = LinkedChunks(range(999))
@@ -355,7 +343,11 @@ class CombiningSet(ShufflingSet):
     def add(self, item):
         found = item in self
         if found:
-            found.combine(item)
+            #If found is falsey, self.__contains__(found) will return True instead of found
+            if found is not True:
+                found.combine(item)
+            else:
+                item.combine(found)
         else:
             self.list.append(item)
     
