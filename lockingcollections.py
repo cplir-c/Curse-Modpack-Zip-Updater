@@ -136,7 +136,7 @@ class LinkedChunks:
                 current[-1] = current[-1][0]
             else:
                 current = current[-1]
-        return current
+        return current, remaining
     def __getitem__(self, index:int):
         '''Slicing is not implemented.'''
         current, remaining = self.__getchunk(index)
@@ -197,7 +197,9 @@ class LinkedChunks:
                 raise StopIteration()
             self.sub_index += 1
             self.index += 1
-            if self.sub_index >= len(self.current) - 1 and self.current is not self.end:
+            if self.sub_index >= len(self.current) - 1:
+                if self.current is self.end:
+                    raise StopIteration()
                 #print(len(self.current),self.sub_index, self.index, self.size)
                 self.current = self.current[self.sub_index]
                 self.sub_index = 0
@@ -262,20 +264,22 @@ class ShufflingSet:
     def symmetric_difference(self, iterable):
         pass
     def __contains__(self,item):
+        i = -1
         for i, o in enumerate(self):
             if o == item:
                 index = i
-        if index is -1:
+                break
+        if i == len(self) - 1:
             return False
-        if index >> 2:
+        if i >> 2:
             #self.list[index], self.list[index//2] = self.list[index//2], self.list[index]
-            del self.list[index]
-            self.list.insert(index >> 2,item)
+            del self.list[i]
+            self.list.insert(i >> 2,item)
         return item or True
     def discard(self,item):
         self.list.remove(item)
     def __len__(self):
-        return len(self,list)
+        return len(self.list)
     def __iter__(self):
         return iter(self.list)
     def __str__(self):

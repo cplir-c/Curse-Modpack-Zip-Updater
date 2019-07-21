@@ -11,6 +11,8 @@ from utilityfunctions import existent_path, is_zipfile, file_generator, \
 from lockingcollections import CombiningSet
 from difflib import SequenceMatcher
 from sys import stderr
+from pprint import pprint
+from typing import Union
 
 class Mod:
     __slots__ = ('in_modpack','pretty_name','version','project_id', 'mod_id', 'file_id')
@@ -45,7 +47,7 @@ class Mod:
                       )
                     )
                 return True
-            
+            assert bool(possibly_equal) is True
             return possibly_equal
         return False
     
@@ -66,7 +68,19 @@ class Mod:
         return "<version "+self.version+" of "+self.pretty_name+">"
     def __repr__(self):
         return "{}({})".format(type(self).__name__,", ".join("{}={}".format(name,repr(getattr(self,name))) for name in type(self).__slots__[1:]))
-
+    def combine(self, other):
+        if self.same_mod(other):
+            if self.same_version(other):
+                for field_name in Mod.__slots__:
+                    this_field = getattr(self,field_name)
+                    other_field = getattr(other, field_name)
+                    if this_field is not possibly_equal and other_field is possibly_equal:
+                        setattr(other, field_name, this_field)
+                    elif other_field is not possibly_equal and this_field is possibly_equal:
+                        setattr(self, field_name, other_field)
+                    elif possibly_equal not in (this_field, other_field) and this_field != other_field:
+                        print('possibly not equal?:',this_field, other_field, file=stderr)
+                    
 class Modpack:
     __slots__ = ('path','pretty_name','mods')
     def __init__(self, path:Path, pretty_name:str):
@@ -81,8 +95,18 @@ class Modpack:
             return self.mods
         mods = CombiningSet()
         for mod_lister in type(self)._mod_listers:
-            mods.update(mod_lister)
+            mods.update(mod_lister(self))
         self.mods = mods
+        return mods
+    def list_modlist_mods(self):
+        modlist = self.open_file(PurePath('modlist.html'))
+        modlist = modlist.read()
+        parsed = parse_html(modlist)
+        try:
+            mods = [ListMod(self, href, title) for href, title in parsed]
+        except ValueError:
+            pprint(list(parsed))
+            raise
         return mods
     def list_files(self):
         raise NotImplementedError
@@ -105,7 +129,7 @@ class ZippedPack(Modpack):
         if not is_zipfile(path):
             raise ValueError("There was no zipped modpack at "+str(path))
         
-        read_zip = file_generator(path,opener=ZipFile)
+        read_zip = file_generator(str(path),opener=ZipFile)
         self.zip_file = read_zip
         
         manifest = file_generator('manifest.json', opener=read_zip.open)
@@ -115,9 +139,12 @@ class ZippedPack(Modpack):
         print('name',name)
         super().__init__(path,name)
     def open_file(self, relative_path:PurePath, mode='r'):
-        return file_generator(relative_path, mode, self.zip_file.open)
+        try:
+            return file_generator(str(relative_path), mode, self.zip_file.open)
+        except IOError:
+            return None
     def list_files(self):
-        return self.zipfile.namelist()
+        return self.zip_file.namelist()
     def list_override_mods(self):
         paths = self.list_files()
         files = list( #Using map and filter because I'm sure it does it one by one instead of saving intermediate results
@@ -130,19 +157,15 @@ class ZippedPack(Modpack):
             )
         )
         mods = [ForgeMod(self, path, file) for path, file in files]
-        return mods
-    def list_modlist_mods(self):
-        modlist = self.open_file(PurePath('modlist.html'))
-        modlist = modlist.read()
-        parsed = parse_html(modlist)
-        mods = [ListMod(self, href, title) for href, title in parsed]
+        mods = [mod for mod in mods if mod is not None]
         return mods
     def list_manifest_mods(self):
         files = self.manifest['files']
         files = ((file['projectID'],file['fileID'],file['required']) for file in files)
         mods = [CurseNumberMod(self,project_id, file_id, required) for project_id, file_id, required in files]
         return mods
-    _mod_listers = list_override_mods, list_modlist_mods, list_manifest_mods
+    _mod_listers = list_override_mods, Modpack.list_modlist_mods, list_manifest_mods
+    
 class PackInstance(Modpack):
     __slots__ = ('config')
     def __init__(self, instance_folder_path:Path):
@@ -158,20 +181,51 @@ class PackInstance(Modpack):
                 if line.startswith('name='):
                     name = line[5:]
                     return name
+    def open_file(self, relative_path:PurePath, mode='r'):
+        if relative_path.is_absolute(): # Don't do this! >.<
+            absolute_path = relative_path
+        else:
+            absolute_path = self.path.joinpath(relative_path)
+        if not isinstance(absolute_path, Path):
+            absolute_path = Path(absolute_path)
+        return file_generator(absolute_path, mode, Path.open)
     def list_instance_mods(self):
-        self.path.list
+        folders = []
+        mods = []
+        folders.append(existent_path(Path(self.path / 'minecraft' / 'mods')))
+        while folders:
+            folder = folders.pop().resolve()
+            for path in folder.iterdir():
+                path = path.resolve()
+                if path.is_dir():
+                    folders.append(path)
+                elif is_zipfile(str(path)):
+                    mod = ForgeMod(self, path)
+                    if mod is not None:
+                        mods.append(mod)
+        return mods
+    def list_modlist_mods(self):
+        top_level = list(self.path.iterdir())
+        for sub_path in top_level:
+            if sub_path.name == 'modlist.html':
+                return super().list_modlist_mods(self)
+        return ()
         
-    _mod_listers = (list_instance_mods,)
+    _mod_listers = (list_instance_mods,list_modlist_mods)
 class ForgeMod(Mod):
     '''
         Retrieve mod details from the (forge) mod jar.
     '''
-    @staticmethod
-    def new(modpack:Modpack, relative_path, mod_file = None) -> Mod:
+    def __new__(cls, modpack:Modpack, relative_path:Union[str,PurePath], mod_file = None) -> Mod:
         if mod_file is None:
-            mod_file = modpack.open_file(relative_path)
+            mod_file = modpack.open_file(relative_path, mode='rb')
         mod_jar = file_generator(mod_file, 'r', ZipFile)
         
+        infos = any(name for name in ZipFile.namelist(mod_jar) if name.endswith('mcmod.info'))
+        if not infos:
+            print('The mod at',relative_path,'did not have a mcmod.info file. I don\'t know what this means. ??', file=stderr)
+            return None
+
         manifest = file_generator('mcmod.info',opener = mod_jar.open)
         manifests = read_binary_json(manifest)
         
@@ -179,8 +233,13 @@ class ForgeMod(Mod):
         versions = []
         names = []
         
+        if 'modListVersion' in manifests:
+            manifests = manifests['modList']
         for manifest in manifests:
-            modids.append(manifest['modid'])
+            try:
+                modids.append(manifest['modid'])
+            except TypeError:
+                print('error',repr(manifest),modpack,relative_path,mod_file,mod_jar,infos,file=stderr)
             versions.append(manifest['version'])
             names.append(manifest['name'])
         
@@ -188,13 +247,14 @@ class ForgeMod(Mod):
         #Assume the mod with the shortest modid is the main mod
         name, version, modid = min(info, key=lambda x: len(x[2]))
         
-        return Mod(self, modpack, name, version, mod_id=modid)
+        return Mod(modpack, name, version, mod_id=modid)
 
 class ListMod(Mod):
     """
         inspect modlist.html for names
     """
-    def __new__(self, modpack:Modpack, href:str, title:str):
+    @staticmethod
+    def __new__(cls, modpack:Modpack, href:str, title:str):
         project_id = href[href.rfind('/')+1:]
         name = title[:title.find('(')]
         return Mod(in_modpack=modpack, name=name, project_id=project_id)
