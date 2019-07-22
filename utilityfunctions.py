@@ -9,7 +9,7 @@ from zipfile import is_zipfile
 from json import loads, JSONDecodeError
 from typing import Union
 from html.parser import HTMLParser
-from pprint import pprint
+from ast import literal_eval
 
 def is_zipfile(fp,is_a_zipfile=is_zipfile):
     """Version of is_zipfile that can take Paths, in addition to str and objects with a read() method."""
@@ -23,8 +23,14 @@ def existent_path(path:Path) -> Path:
         raise ValueError("Path "+str(path)+" does not exist.")
     return path
 
-def printl(x):
-    print(x[:1],end='')
+_open_files = {}
+def _count_closed_files(x):
+    x=x[:2]
+    if x not in _open_files:
+        _open_files[x]=1
+    else:
+        _open_files[x]+=1
+    #print(x,_open_files[x],end=' '+('\n'*(_open_files[x]%10==0)))
 
 def file_generator(path:Union[str,Path],mode:str='r',opener=open):
     """Use finalizers to auto-close closable objects"""
@@ -32,7 +38,7 @@ def file_generator(path:Union[str,Path],mode:str='r',opener=open):
         opened = opener(path,mode=mode)
         #print('opened',path)
         finalize(opened,opened.close)
-        finalize(opened,printl,str(path))
+        _count_closed_files(str(path)[:2])
         return opened
     except:
         try:
@@ -41,6 +47,7 @@ def file_generator(path:Union[str,Path],mode:str='r',opener=open):
             pass
         print(path,mode,opener)
         raise
+finalize(file_generator, print, _open_files)
 
 def check_zipfile(path:Path) -> bool:
     """Checks if a file exists and is a zipfile."""
@@ -54,15 +61,33 @@ def possibly_equal(first, second):
     return first == second
 
 def read_binary_json(file):
-    contents = ''.join(line.rstrip().decode() for line in file)
+    #join every line using commas
+    contents = ','.join(line.strip().decode() for line in file)
+    #Deduplicate commas
+    while ',,' in contents:
+        contents = contents.replace(',,',',')
+    #Remove silly commas
+    for opening in '{[(':
+        issue_string = opening + ','
+        while issue_string in contents:
+            contents = contents.replace(issue_string, opening)
+    for closing in ')]}':
+        issue_string = ',' + closing
+        while issue_string in contents:
+            contents = contents.replace(issue_string, closing)
+    while ':,' in contents:
+        contents = contents.replace(':,', ':')
+    
     try:
-        return loads(contents)
-    except JSONDecodeError:
-        print(repr(contents))
+        return literal_eval(contents)
+    except ValueError:
+        try:
+            return loads(contents)
+        except JSONDecodeError:
+            print(repr(contents))
+            raise
         raise
-read_binary_json(b"""
-{"l":{},"j":["k",{},[]]}
-""".split(b'\n'))
+read_binary_json(b"""{"l":{},"j":["k",{},[]]}""".split(b'\n'))
 
 class parse_html(HTMLParser):
     """
@@ -77,7 +102,9 @@ class parse_html(HTMLParser):
     def __init__(self, data):
         super().__init__()
         self.data = [[]]
-        self.feed(data.decode())
+        if hasattr(data,'decode'):
+            data = data.decode()
+        self.feed(data)
         del self.data[-1]
     def __iter__(self):
         return iter(self.data)
@@ -86,10 +113,11 @@ class parse_html(HTMLParser):
             attrs = dict(attrs)
             self.data[-1].append(attrs['href'])
     def handle_data(self, data):
-        if data[0].isalpha():
+        if data[0].isalpha() and data[0].startswith('https://'):
             self.data[-1].append(data)
             self.data.append([])
         
 def prettify_name(name:str) -> str:
     if isinstance(name, str):
         return name.replace('_',' ') if ' ' not in name else name
+    return possibly_equal

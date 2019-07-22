@@ -47,9 +47,11 @@ class Mod:
                       )
                     )
                 return True
-            assert bool(possibly_equal) is True
+            
             return possibly_equal
         return False
+    
+    assert bool(possibly_equal) is True
     
     def same_version(self, other):
         version_equality = possibly_equal(self.version, other.version)
@@ -65,7 +67,7 @@ class Mod:
     def __eq__(self, other):
         return self.same_mod(other)
     def __str__(self):
-        return "<version "+self.version+" of "+self.pretty_name+">"
+        return "<version "+str(self.pretty_print_version())+" of "+str(self.pretty_print_name())+">"
     def __repr__(self):
         return "{}({})".format(type(self).__name__,", ".join("{}={}".format(name,repr(getattr(self,name))) for name in type(self).__slots__[1:]))
     def combine(self, other):
@@ -80,7 +82,24 @@ class Mod:
                         setattr(self, field_name, other_field)
                     elif possibly_equal not in (this_field, other_field) and this_field != other_field:
                         print('possibly not equal?:',this_field, other_field, file=stderr)
-                    
+    def pretty_print_name(self):
+        return (self.pretty_name if self.pretty_name is not possibly_equal
+                else "Project ID: "+str(self.project_id) if self.project_id is not possibly_equal
+                else '<possibly equal>')
+    def pretty_print_version(self):
+        return (self.version if self.version is not possibly_equal
+                else "File ID: "+str(self.file_id) if self.file_id is not possibly_equal
+                else '<possibly equal>')
+    
+    project_names = {}
+    @classmethod
+    def pretty_name_from_project_id(cls, project_id:int):
+        project_name = cls.project_names.get(project_id)
+        if project_name is None:
+            return None
+        return project_name
+    
+        
 class Modpack:
     __slots__ = ('path','pretty_name','mods')
     def __init__(self, path:Path, pretty_name:str):
@@ -208,10 +227,11 @@ class PackInstance(Modpack):
         top_level = list(self.path.iterdir())
         for sub_path in top_level:
             if sub_path.name == 'modlist.html':
-                return super().list_modlist_mods(self)
+                return super().list_modlist_mods()
         return ()
         
     _mod_listers = (list_instance_mods,list_modlist_mods)
+    
 class ForgeMod(Mod):
     '''
         Retrieve mod details from the (forge) mod jar.
@@ -255,16 +275,20 @@ class ListMod(Mod):
     """
     @staticmethod
     def __new__(cls, modpack:Modpack, href:str, title:str):
-        project_id = href[href.rfind('/')+1:]
+        project_id = int(href[href.rfind('/')+1:])
         name = title[:title.find('(')]
+        Mod.project_names[project_id] = name
         return Mod(in_modpack=modpack, name=name, project_id=project_id)
     
 class CurseNumberMod(Mod):
     """
-       Use the numbers in the manifest to find a mod.
+        Use the numbers in the manifest to find a mod.
     """
     def __new__(self, modpack:Modpack, project_id:int, file_id:int, required=True):
-        mod = Mod(name=possibly_equal, in_modpack=modpack, project_id=project_id, file_id=file_id)
+        name = Mod.pretty_name_from_project_id(project_id)
+        if name is None:
+            name = possibly_equal
+        mod = Mod(name=name, in_modpack=modpack, project_id=project_id, file_id=file_id)
         if not required:
             print('WARNING:',mod,'is not required', file=stderr)
         return mod

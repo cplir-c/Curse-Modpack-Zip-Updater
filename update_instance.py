@@ -24,7 +24,7 @@ def get_files(instance_folder, zip_file_folder, zip_new = None):
     "This function gets the zip files for updating, and the instance folder path."
     instance_folder = Path(working_directory,instance_folder).resolve()
     print('instance folder: '+str(instance_folder))
-    #instance_pack = PackInstance(instance_folder)
+    instance_pack = PackInstance(instance_folder)
     
     zip_file_folder = Path(working_directory,zip_file_folder).resolve()
     print('zip file folder: '+str(instance_folder))
@@ -67,13 +67,17 @@ def get_files(instance_folder, zip_file_folder, zip_new = None):
     check_zipfile(zip_new)
     new_zip_pack = ZippedPack(zip_new)
 
-    return (instance_folder,old_zip_pack,new_zip_pack)
+    return (instance_pack,old_zip_pack,new_zip_pack)
 
 def update_from_zip(instance_folder, zip_file_folder, new_zip = None):
     "The main function. Updates the given instance using the zips in the folder. Both are string paths."
-    instance_folder, zip_old_pack, zip_new_pack = get_files(instance_folder, zip_file_folder, new_zip)
+    instance_pack, zip_old_pack, zip_new_pack = get_files(instance_folder, zip_file_folder, new_zip)
     
     any(map(print,(zip_old_pack, zip_new_pack)))
+    
+    #any(map(print,zip_old_pack.list_mods()))
+    #print(*'\n'*8,"New pack:")
+    #any(map(print,zip_new_pack.list_mods()))
     #It's going to be in the new zip file anyway.
 
 update_from_zip(r'..\..\..\mc\mmc-stable-win32\MultiMC\instances\ATM3-_Expert_Shedding_Tiers-1.1.4',

@@ -10,10 +10,8 @@ from typing import Tuple
 
 #uh-oh, it doesn't work on tuples 
 class LockingList(list):
-    """
-   "This class extends the built-in list class to support hashing by locking itself when hashed."
-   "It doesn't work on tuples. They don't hash their members until the tuple's hash method is called."
-    """
+    "This class extends the built-in list class to support hashing by locking itself when hashed. "
+    "It doesn't work on tuples. They don't hash their members until the tuple's hash method is called."
     __slots__=()
     hashes = {}
     # hashes is a private dictionary
@@ -354,7 +352,8 @@ class CombiningSet(ShufflingSet):
                 item.combine(found)
         else:
             self.list.append(item)
-    
+    '''def __str__(self):
+        return "CombiningSet({})".format(self.list)'''
 if __name__ == "__main__":
     #test()
     pass
