@@ -1,11 +1,8 @@
-from collections import defaultdict as default_dict
-from zipfile import ZipFile
-from pathlib import Path
-from difflib import Differ,SequenceMatcher
-from time import sleep
-from pprint import pprint
 
-from lockingcollections import LockingList as List
+from pathlib import Path
+from difflib import SequenceMatcher
+from time import sleep
+
 from utilityfunctions import check_zipfile
 from modpackclasses import ZippedPack, PackInstance
 '''

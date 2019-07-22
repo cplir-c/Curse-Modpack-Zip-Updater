@@ -4,7 +4,7 @@ Created on Jul 10, 2019
 @author: cplir-c
 
 '''
-from collections.abc import Hashable, Set, Sized
+from collections.abc import Hashable, Sized
 from collections import deque
 from typing import Tuple
 
@@ -242,7 +242,7 @@ linkedtest.pop()
 del linkedtest
 
 class ShufflingSet:
-    __slots__ = ('list','chunk_cache')
+    __slots__ = ('list',)
     def __init__(self,iterable=()):
         self.list = LinkedChunks()
         self.update(iterable)
@@ -352,8 +352,6 @@ class CombiningSet(ShufflingSet):
                 item.combine(found)
         else:
             self.list.append(item)
-    '''def __str__(self):
-        return "CombiningSet({})".format(self.list)'''
 if __name__ == "__main__":
     #test()
     pass

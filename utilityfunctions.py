@@ -25,7 +25,7 @@ def existent_path(path:Path) -> Path:
 
 _open_files = {}
 def _count_closed_files(x):
-    x=x[:2]
+    x=x[-6:-4]
     if x not in _open_files:
         _open_files[x]=1
     else:
@@ -33,20 +33,26 @@ def _count_closed_files(x):
     #print(x,_open_files[x],end=' '+('\n'*(_open_files[x]%10==0)))
 
 def file_generator(path:Union[str,Path],mode:str='r',opener=open):
-    """Use finalizers to auto-close closable objects"""
-    try:
-        opened = opener(path,mode=mode)
-        #print('opened',path)
-        finalize(opened,opened.close)
-        _count_closed_files(str(path)[:2])
-        return opened
-    except:
-        try:
-            opened.close()
-        except NameError:
-            pass
-        print(path,mode,opener)
-        raise
+    """
+        Use finalizers to auto-close closable objects
+        Returns the next method of a generator that yields finalized closable objects
+    """
+    def generator(path=path, mode=mode, opener=opener):
+        finalizer = lambda:None
+        while True:
+            finalizer()
+            opened = opener(path, mode=mode)
+            finalizer = finalize(opened, opened.close)
+            _count_closed_files(str(path))
+            yield opened
+    
+    this_generator = generator()
+    
+    return this_generator.__next__
+this_file = file_generator(__file__)
+for i in range(1):
+    tried = this_file()
+del this_file, tried, i
 finalize(file_generator, print, _open_files)
 
 def check_zipfile(path:Path) -> bool:

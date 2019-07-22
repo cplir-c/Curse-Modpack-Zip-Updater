@@ -71,17 +71,17 @@ class Mod:
     def __repr__(self):
         return "{}({})".format(type(self).__name__,", ".join("{}={}".format(name,repr(getattr(self,name))) for name in type(self).__slots__[1:]))
     def combine(self, other):
-        if self.same_mod(other):
-            if self.same_version(other):
-                for field_name in Mod.__slots__:
-                    this_field = getattr(self,field_name)
-                    other_field = getattr(other, field_name)
-                    if this_field is not possibly_equal and other_field is possibly_equal:
-                        setattr(other, field_name, this_field)
-                    elif other_field is not possibly_equal and this_field is possibly_equal:
-                        setattr(self, field_name, other_field)
-                    elif possibly_equal not in (this_field, other_field) and this_field != other_field:
-                        print('possibly not equal?:',this_field, other_field, file=stderr)
+        if self.same_mod(other) and self.same_version(other):
+            for field_name in Mod.__slots__:
+                this_field = getattr(self,field_name)
+                other_field = getattr(other, field_name)
+                if this_field is not possibly_equal and other_field is possibly_equal:
+                    setattr(other, field_name, this_field)
+                elif other_field is not possibly_equal and this_field is possibly_equal:
+                    setattr(self, field_name, other_field)
+                elif possibly_equal not in (this_field, other_field) and this_field != other_field:
+                    print('possibly not equal?:',this_field, other_field, file=stderr)
+    
     def pretty_print_name(self):
         return (self.pretty_name if self.pretty_name is not possibly_equal
                 else "Project ID: "+str(self.project_id) if self.project_id is not possibly_equal
@@ -98,7 +98,6 @@ class Mod:
         if project_name is None:
             return None
         return project_name
-    
         
 class Modpack:
     __slots__ = ('path','pretty_name','mods')
@@ -118,8 +117,8 @@ class Modpack:
         self.mods = mods
         return mods
     def list_modlist_mods(self):
-        modlist = self.open_file(PurePath('modlist.html'))
-        modlist = modlist.read()
+        with self.open_file(PurePath('modlist.html'))() as modlist:
+            modlist = modlist.read()
         parsed = parse_html(modlist)
         try:
             mods = [ListMod(self, href, title) for href, title in parsed]
@@ -144,15 +143,15 @@ class ZippedPack(Modpack):
         if not path.is_absolute():
             path = path.absolute()
         path = path.resolve()
-        check_zipfile(path)
-        if not is_zipfile(path):
+        
+        if not check_zipfile(path):
             raise ValueError("There was no zipped modpack at "+str(path))
         
-        read_zip = file_generator(str(path),opener=ZipFile)
+        read_zip = file_generator(str(path),opener=ZipFile)()
         self.zip_file = read_zip
         
         manifest = file_generator('manifest.json', opener=read_zip.open)
-        self.manifest = manifest = read_binary_json(manifest)
+        self.manifest = manifest = read_binary_json(manifest())
         
         name = manifest["name"]
         print('name',name)
@@ -168,7 +167,7 @@ class ZippedPack(Modpack):
         paths = self.list_files()
         files = list( #Using map and filter because I'm sure it does it one by one instead of saving intermediate results
             filter(
-                lambda x:is_zipfile(x[1]),
+                lambda x:is_zipfile(x[1]()),
                 map(
                     lambda path,opener=self.zip_file.open:(path,file_generator(path, opener=opener)),
                     paths
@@ -239,15 +238,16 @@ class ForgeMod(Mod):
     def __new__(cls, modpack:Modpack, relative_path:Union[str,PurePath], mod_file = None) -> Mod:
         if mod_file is None:
             mod_file = modpack.open_file(relative_path, mode='rb')
-        mod_jar = file_generator(mod_file, 'r', ZipFile)
+        mod_jar = file_generator(mod_file(), 'r', ZipFile)
         
-        infos = any(name for name in ZipFile.namelist(mod_jar) if name.endswith('mcmod.info'))
+        infos = any(name for name in ZipFile.namelist(mod_jar()) if name.endswith('mcmod.info'))
         if not infos:
             print('The mod at',relative_path,'did not have a mcmod.info file. I don\'t know what this means. ??', file=stderr)
-            return None
+            try: raise
+            except: return None
 
-        manifest = file_generator('mcmod.info',opener = mod_jar.open)
-        manifests = read_binary_json(manifest)
+        manifest = file_generator('mcmod.info',opener = lambda *a,mod_jar=mod_jar,**w:mod_jar().open(*a,**w))
+        manifests = read_binary_json(manifest())
         
         modids = []
         versions = []
@@ -260,12 +260,13 @@ class ForgeMod(Mod):
                 modids.append(manifest['modid'])
             except TypeError:
                 print('error',repr(manifest),modpack,relative_path,mod_file,mod_jar,infos,file=stderr)
+                raise
             versions.append(manifest['version'])
             names.append(manifest['name'])
         
         info = zip(names, versions, modids)
         #Assume the mod with the shortest modid is the main mod
-        name, version, modid = min(info, key=lambda x: len(x[2]))
+        name, version, modid = min(info, key=lambda x: len(x[0]))
         
         return Mod(modpack, name, version, mod_id=modid)
 
@@ -277,7 +278,7 @@ class ListMod(Mod):
     def __new__(cls, modpack:Modpack, href:str, title:str):
         project_id = int(href[href.rfind('/')+1:])
         name = title[:title.find('(')]
-        Mod.project_names[project_id] = name
+        name = Mod.pretty_name_from_project_id(project_id)
         return Mod(in_modpack=modpack, name=name, project_id=project_id)
     
 class CurseNumberMod(Mod):
