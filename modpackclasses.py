@@ -8,7 +8,7 @@ from zipfile import ZipFile
 
 from utilityfunctions import existent_path, is_zipfile, file_generator, \
   read_binary_json, check_zipfile, possibly_equal, parse_html, prettify_name
-from lockingcollections import CombiningSet
+from lockingcollections import CombiningSet, LinkedChunks
 from difflib import SequenceMatcher
 from sys import stderr
 from pprint import pprint
@@ -207,20 +207,25 @@ class PackInstance(Modpack):
         if not isinstance(absolute_path, Path):
             absolute_path = Path(absolute_path)
         return file_generator(absolute_path, mode, Path.open)
-    def list_instance_mods(self):
-        folders = []
-        mods = []
-        folders.append(existent_path(Path(self.path / 'minecraft' / 'mods')))
+    def list_files(self, subdir = PurePath('.')):
+        folders = LinkedChunks()
+        folders.append(existent_path(Path(self.path) / subdir).resolve())
         while folders:
-            folder = folders.pop().resolve()
+            folder = folders.pop()
             for path in folder.iterdir():
                 path = path.resolve()
                 if path.is_dir():
                     folders.append(path)
-                elif is_zipfile(str(path)):
-                    mod = ForgeMod(self, path)
-                    if mod is not None:
-                        mods.append(mod)
+                else:
+                    yield path
+    def list_instance_mods(self):
+        mods = LinkedChunks()
+        files = self.list_files(existent_path(Path(self.path / 'minecraft' / 'mods')))
+        for path in files:
+            if is_zipfile(str(path)):
+                mod = ForgeMod(self, path)
+                if mod is not None:
+                    mods.append(mod)
         return mods
     def list_modlist_mods(self):
         top_level = list(self.path.iterdir())

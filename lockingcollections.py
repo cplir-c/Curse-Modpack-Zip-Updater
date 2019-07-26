@@ -96,7 +96,7 @@ class LinkedChunks:
         self.start = []
         self.size = 0
         self.end = self.start
-        self.extend(iterable)
+        self += iterable
     def append(self, item):
         self.size += 1
         if len(self.end) == 128:
@@ -120,6 +120,10 @@ class LinkedChunks:
             self.end = current
             self.size = size
     __iadd__ = extend
+    def __add__(self, other):
+        newlist = self.copy()
+        newlist += other
+        return newlist
     def __len__(self) -> int:
         return self.size
     def __getchunk(self, index:int):
@@ -128,12 +132,17 @@ class LinkedChunks:
         #must put in a look ahead one segment to see the end before arriving there
         #Otherwise it could go over the end when shortening the last link when there's one item in the last chunk
         #Or if the last item in the last link is a list with one item
-        while len(current) < remaining:
-            remaining -= len(current) - 1
-            if len(current[-1]) == 1 and remaining > 0:
-                current[-1] = current[-1][0]
-            else:
-                current = current[-1]
+        try:
+            while len(current) < remaining:
+                remaining -= len(current) - 1
+                if len(current[-1]) == 1 and remaining > 0:
+                    current[-1] = current[-1][0]
+                else:
+                    current = current[-1]
+        except TypeError:
+            print(remaining)
+        if remaining > len(current):
+            print(remaining, current, index)
         return current, remaining
     def __getitem__(self, index:int):
         '''Slicing is not implemented.'''
@@ -144,19 +153,28 @@ class LinkedChunks:
         del current[remaining]
         self.size -= 1
     def pop(self, index = -1):
+        #Correct negative indicies
         if index < 0:
             index += self.size
-        if index > self.size - len(self.end):
-            return self.end.pop(index - self.size + len(self.end))
-        self.size -= 1
+        
+        #Check the end first for the index
+        end_index = index - (self.size - len(self.end))
+        if end_index > 0:
+            self.size -= 1
+            print(index, end_index)
+            return self.end.pop(end_index)
+        
+        #Then check the rest for the index
         current, remaining = self.__getchunk(index)
-        current.pop(remaining)
+        self.size -= 1
+        return current.pop(remaining)
     def __setitem__(self, index, item):
         current, remaining = self.__getchunk(index)
         current[remaining] = item
     def insert(self, index, item):
         current, remaining = self.__getchunk(index)
         current.insert(remaining, item)
+        self.size += 1
         while len(current) == 128:
             current[-1].insert(0,current.pop(-2))
             current = current[-1]
@@ -167,56 +185,25 @@ class LinkedChunks:
             if other == item:
                 return True
         return False
-    def __chunk_iter(self):
+    def __iter__(self):
+        end = self.end
         current = self.start
-        end = self.end
         while current is not end:
-            yield current
+            for i in range(len(current)-1):
+                yield current[i]
             current = current[-1]
-        yield end
-    def __iter(self):
-        end = self.end
-        for chunk in self.__chunk_iter():
-            if chunk is not end:
-                for i in range(len(chunk)-1):
-                    yield chunk[i]
-            else:
-                yield from chunk
-    class LinkedChunkIterator:
-        __slots__ = ('current','sub_index','index','size','end')
-        def __init__(self, linked_chunks):
-            self.current = linked_chunks.start
-            self.size = linked_chunks.size
-            self.end = linked_chunks.end
-            self.index = 0
-            self.sub_index = 0
-        def __next__(self):
-            if self.index >= self.size:
-                raise StopIteration()
-            self.sub_index += 1
-            self.index += 1
-            if self.sub_index >= len(self.current) - 1:
-                if self.current is self.end:
-                    raise StopIteration()
-                #print(len(self.current),self.sub_index, self.index, self.size)
-                self.current = self.current[self.sub_index]
-                self.sub_index = 0
-            return self.current[self.sub_index]
+        yield from current
     def __bool__(self):
         return self.size != 0
-    def __iter__(self):
-        return type(self).LinkedChunkIterator(self)
-    def index(self, item):
-        iterator = iter(self)
-        for i in iterator:
-            if i == item:
-                return iterator.index
+    def index(self, other):
+        for i,o in enumerate(self):
+            if other == o:
+                return i
         raise IndexError
-    def find(self, item):
-        iterator = iter(self)
-        for i in iterator:
-            if i == item:
-                return iterator.index
+    def find(self, other):
+        for i,o in enumerate(self):
+            if other == o:
+                return i
         return -1
     def remove(self, item):
         index = self.index(item)
@@ -235,7 +222,10 @@ class LinkedChunks:
         self.start, self.end = self.end, self.start
         
         self.__getchunk(-1)
-    
+    def __str__(self):
+        return ''.join(('LinkedChunks(',','.join(self),')'))
+    def __repr__(self):
+        return ' '.join(map(str,(self.size, self.start)))
             
 linkedtest = LinkedChunks(range(999))
 linkedtest.pop()

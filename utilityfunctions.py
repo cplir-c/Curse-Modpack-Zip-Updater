@@ -25,7 +25,7 @@ def existent_path(path:Path) -> Path:
 
 _open_files = {}
 def _count_closed_files(x):
-    x=x[-6:-4]
+    x=x[-6:-5]
     if x not in _open_files:
         _open_files[x]=1
     else:
